@@ -4,7 +4,7 @@ import {
   FileText, Activity, AlertTriangle, ArrowRight, Target, Eye, Users,
   BarChart3, ClipboardCheck, Table, ChevronRight, Key,
 } from 'lucide-react';
-import { generateText, ApiError, getApiKey } from '../lib/gemini';
+import { generateText, ApiError, getApiKey, extractJsonRobust, SR_CASE_SCHEMA } from '../lib/gemini';
 
 const DOMAINS = [
   { id: 'rob', name: 'Risk of Bias', nameJa: 'バイアスリスク', desc: '組入試験の方法論的限界', icon: AlertTriangle },
@@ -269,32 +269,6 @@ const SoFTable = ({ outcomes }: any) => {
   );
 };
 
-const extractJson = (text: string): any => {
-  if (!text) return null;
-  let cleaned = text.trim();
-  cleaned = cleaned.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-
-  const firstBrace = cleaned.indexOf('{');
-  const lastBrace = cleaned.lastIndexOf('}');
-  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) return null;
-
-  const jsonStr = cleaned.substring(firstBrace, lastBrace + 1);
-  try {
-    return JSON.parse(jsonStr);
-  } catch {
-    for (let i = lastBrace; i > firstBrace; i--) {
-      if (cleaned[i] === '}') {
-        try {
-          return JSON.parse(cleaned.substring(firstBrace, i + 1));
-        } catch {
-          continue;
-        }
-      }
-    }
-    return null;
-  }
-};
-
 const validateCase = (c: any): string | null => {
   if (!c || typeof c !== 'object') return 'JSONがオブジェクトでない';
   const required = ['title', 'field', 'target_pico', 'ci_data', 'pooled_result',
@@ -446,20 +420,32 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
     ].filter(Boolean).join('\n');
 
     const maxAttempts = 3;
+    let lastText = '';
+    let lastFinish = '';
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       setLoadingMessage(`SRケース生成中... (試行${attempt}/${maxAttempts})`);
       try {
-        const text = await generateText(makePrompt(attempt), {
-          maxOutputTokens: 6000,
-          temperature: 0.85,
+        // 試行1-2は responseSchema を使って構造化出力(最も安定)
+        // 試行3は schemaなし + より高いmax_tokens でフォールバック
+        const useSchema = attempt <= 2;
+        const { text, finishReason } = await generateText(makePrompt(attempt), {
+          maxOutputTokens: useSchema ? 8192 : 16384,
+          temperature: attempt === 1 ? 0.85 : 0.7,
           responseMimeType: 'application/json',
+          responseSchema: useSchema ? SR_CASE_SCHEMA : undefined,
         });
-        const parsed = extractJson(text);
+        lastText = text;
+        lastFinish = finishReason || '';
+        const parsed = extractJsonRobust(text);
 
         if (!parsed) {
-          console.warn(`試行${attempt}: JSONパース失敗`);
+          console.warn(`試行${attempt}: JSONパース失敗 (finish=${finishReason})\nレスポンス先頭300字:`, text.slice(0, 300));
           if (attempt === maxAttempts) {
-            setError('ケース生成に失敗: JSONパース不能。モデルを変えるか、再度お試しください。');
+            const preview = text.slice(0, 200).replace(/\s+/g, ' ');
+            const tips = finishReason === 'MAX_TOKENS'
+              ? '原因: トークン上限で途切れた。モデルを gemini-2.5-flash に変更すると改善することがあります。'
+              : '原因: モデルが予期しない形式で返した。モデルを gemini-2.5-flash または gemini-2.0-flash-lite に切り替えてみてください。';
+            setError(`ケース生成に失敗: JSONパース不能(3回試行)\n${tips}\n\n【finishReason】${finishReason || '不明'}\n【応答先頭】${preview}...`);
             setScreen('menu');
             return;
           }
@@ -470,7 +456,7 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
         if (validationError) {
           console.warn(`試行${attempt}: 検証失敗 - ${validationError}`);
           if (attempt === maxAttempts) {
-            setError(`ケース生成に失敗: ${validationError}`);
+            setError(`ケース生成に失敗: ${validationError}\n(モデルをgemini-2.5-flashに変えると改善することがあります)`);
             setScreen('menu');
             return;
           }
@@ -483,16 +469,21 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
       } catch (e: any) {
         console.error(`試行${attempt}エラー:`, e);
         if (e instanceof ApiError) {
+          // リトライ可能なエラーは自動的にgenerateText内で処理済み。ここに来たら最終的な失敗
           setError(e.message);
           setScreen('menu');
           return;
         }
         if (attempt === maxAttempts) {
-          setError('ケース生成に失敗しました。通信状況とAPIキーを確認してもう一度お試しください。');
+          setError(`ケース生成に失敗しました: ${String(e?.message || e).slice(0, 200)}\n通信状況とAPIキーを確認して、もう一度お試しください。\n(finishReason: ${lastFinish || '不明'})`);
           setScreen('menu');
           return;
         }
       }
+    }
+    // 念のためフォールバック
+    if (lastText) {
+      console.error('最終失敗。最後のレスポンス:', lastText.slice(0, 500));
     }
   };
 
@@ -522,7 +513,7 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
     ].join('\n');
 
     try {
-      const text = await generateText(prompt, {
+      const { text } = await generateText(prompt, {
         maxOutputTokens: 300,
         temperature: 0.5,
         responseMimeType: 'text/plain',

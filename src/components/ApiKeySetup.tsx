@@ -40,11 +40,11 @@ export default function ApiKeySetup({ onClose, onOpenGuide }: Props) {
     setTesting(true);
     setTestResult(null);
     try {
-      const out = await generateText('ping と1語だけ答えてください。', {
+      const { text } = await generateText('ping と1語だけ答えてください。', {
         maxOutputTokens: 20,
         responseMimeType: 'text/plain',
       });
-      setTestResult({ ok: true, msg: `✅ 成功: 応答 "${out.trim().slice(0, 40)}"` });
+      setTestResult({ ok: true, msg: `✅ 成功: 応答 "${text.trim().slice(0, 40)}"` });
     } catch (e: any) {
       const msg = e instanceof ApiError ? e.message : String(e?.message || e);
       setTestResult({ ok: false, msg: `❌ ${msg}` });
