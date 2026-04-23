@@ -64,6 +64,59 @@ export interface GenerateOptions {
   maxOutputTokens?: number;
   temperature?: number;
   responseMimeType?: 'application/json' | 'text/plain';
+  timeoutMs?: number;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function classifyError(e: any): ApiError {
+  const msg = String(e?.message || e);
+  const status = e?.status ?? e?.statusText;
+
+  if (/API key not valid|API_KEY_INVALID|invalid.*api.*key|403.*PERMISSION_DENIED/i.test(msg)) {
+    return new ApiError(
+      'APIキーが無効か、Generative Language APIがプロジェクトで有効になっていません。\n' +
+      '→ Google AI Studioで新しいキーを作成するか、https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com で有効化してください。',
+      'INVALID_KEY'
+    );
+  }
+  if (/SAFETY|blocked|prohibited|content.*filter/i.test(msg)) {
+    return new ApiError('Geminiの安全フィルタでブロックされました。「次のケース」を押して再試行してください。', 'SAFETY');
+  }
+  if (/model.*not found|models\/.*not found|404.*NOT_FOUND/i.test(msg)) {
+    return new ApiError('選択中のモデルが利用できません。APIキー設定画面でモデルを変更してください。', 'MODEL');
+  }
+  if (/429|RESOURCE_EXHAUSTED|Too Many Requests/i.test(msg) || status === 429) {
+    // Gemini 429 は通常「1分15リクエスト(RPM)」の一時制限。日次(RPD)の場合もあるが大抵は1-2分待てば復活。
+    return new ApiError(
+      'レート制限にかかりました(Gemini無料枠の1分15リクエストなど)。\n' +
+      '【対処】1〜2分待ってから「次のケース」を押してください。それでも直らない場合のみ日次上限の可能性です。',
+      'RATE_LIMIT'
+    );
+  }
+  if (/5\d\d|INTERNAL|UNAVAILABLE|DEADLINE_EXCEEDED/i.test(msg)) {
+    return new ApiError('Google側の一時的エラーです。少し待ってから再試行してください。', 'SERVER');
+  }
+  if (/fetch|network|NetworkError|Failed to fetch|ERR_|ECONN|ETIMEDOUT|abort|timeout/i.test(msg)) {
+    return new ApiError(
+      '接続エラー: Geminiサーバーに到達できません。\n' +
+      '【対処】(1) ネット接続を確認 (2) ブラウザの拡張機能(広告ブロッカー等)を一時OFF (3) VPN/プロキシをOFF (4) 1〜2分待って再試行',
+      'NETWORK'
+    );
+  }
+  return new ApiError(`Gemini APIエラー: ${msg}`, 'UNKNOWN');
+}
+
+async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let t: any;
+  const timeout = new Promise<never>((_, reject) => {
+    t = setTimeout(() => reject(new Error(`timeout: ${label} (${ms}ms)`)), ms);
+  });
+  try {
+    return await Promise.race([p, timeout]);
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 export async function generateText(
@@ -76,39 +129,42 @@ export async function generateText(
   }
   const modelId = getModel();
   const model = buildModel(apiKey, modelId);
+  const timeoutMs = options.timeoutMs ?? 90_000;
 
-  try {
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        maxOutputTokens: options.maxOutputTokens ?? 5000,
-        temperature: options.temperature ?? 0.8,
-        responseMimeType: options.responseMimeType ?? 'application/json',
-      },
-    });
-    const response = result.response;
-    const text = response.text();
-    if (!text) throw new ApiError('APIが空の応答を返しました。', 'EMPTY');
-    return text;
-  } catch (e: any) {
-    const msg = String(e?.message || e);
-    if (/API key not valid|API_KEY_INVALID|invalid.*api.*key/i.test(msg)) {
-      throw new ApiError('APIキーが無効です。Google AI Studioで正しいキーを作成し直してください。', 'INVALID_KEY');
+  const maxRetries = 2;
+  let lastError: ApiError | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+    try {
+      const result = await withTimeout(
+        model.generateContent({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: {
+            maxOutputTokens: options.maxOutputTokens ?? 5000,
+            temperature: options.temperature ?? 0.8,
+            responseMimeType: options.responseMimeType ?? 'application/json',
+          },
+        }),
+        timeoutMs,
+        `generateContent attempt ${attempt}`
+      );
+      const response = result.response;
+      const text = response.text();
+      if (!text) throw new ApiError('APIが空の応答を返しました(safety filterの可能性)。', 'EMPTY');
+      return text;
+    } catch (e: any) {
+      lastError = e instanceof ApiError ? e : classifyError(e);
+      // 自動リトライの対象: RATE_LIMIT / SERVER / NETWORK / EMPTY
+      const retriable = ['RATE_LIMIT', 'SERVER', 'NETWORK', 'EMPTY'].includes(lastError.code);
+      if (!retriable || attempt > maxRetries) {
+        throw lastError;
+      }
+      const backoff = lastError.code === 'RATE_LIMIT' ? 8_000 : 2_000 * attempt;
+      console.warn(`[Gemini] 試行${attempt}失敗 (${lastError.code}): ${lastError.message}\n  ${backoff}ms待って再試行`);
+      await sleep(backoff);
     }
-    if (/quota|RESOURCE_EXHAUSTED|429/i.test(msg)) {
-      throw new ApiError('無料枠の上限に達しました。しばらく待つか、別のAPIキーを使ってください（詳細はREADMEの「上限確認」参照）。', 'QUOTA');
-    }
-    if (/SAFETY|blocked|prohibited/i.test(msg)) {
-      throw new ApiError('Geminiの安全フィルタで応答がブロックされました。もう一度試すか、難易度を変えてください。', 'SAFETY');
-    }
-    if (/fetch|network|NetworkError|Failed to fetch/i.test(msg)) {
-      throw new ApiError('ネットワークエラー: 接続を確認してください。', 'NETWORK');
-    }
-    if (/model.*not found|404|NOT_FOUND/i.test(msg)) {
-      throw new ApiError(`モデル "${modelId}" が見つかりません。別のモデルに切り替えてください。`, 'MODEL');
-    }
-    throw new ApiError(`Gemini APIエラー: ${msg}`, 'UNKNOWN');
   }
+  throw lastError || new ApiError('不明なエラー', 'UNKNOWN');
 }
 
 export class ApiError extends Error {

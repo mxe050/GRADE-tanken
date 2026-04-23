@@ -7,9 +7,10 @@ import {
 
 interface Props {
   onClose: () => void;
+  onOpenGuide: () => void;
 }
 
-export default function ApiKeySetup({ onClose }: Props) {
+export default function ApiKeySetup({ onClose, onOpenGuide }: Props) {
   const [key, setKey] = useState(getApiKey());
   const [show, setShow] = useState(false);
   const [model, setModelState] = useState(getModel());
@@ -182,7 +183,11 @@ export default function ApiKeySetup({ onClose }: Props) {
             <li>上の入力欄に貼り付けて「保存」</li>
           </ol>
           <div className="text-[11px] text-slate-400 mt-3">
-            詳しい解説とトラブルシューティングは <a href="https://github.com/mxe050/GRADE-tanken#apiキーとは" className="text-indigo-300 underline" target="_blank" rel="noopener">README</a> を参照。
+            詳しい解説とトラブルシューティングは{' '}
+            <button onClick={onOpenGuide} className="text-indigo-300 underline hover:text-indigo-200">
+              使い方ガイド
+            </button>
+            {' '}を参照。
           </div>
         </div>
       </div>

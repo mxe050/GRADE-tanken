@@ -1,12 +1,23 @@
 import { useState } from 'react';
 import BiasDetective from './components/BiasDetective';
 import ApiKeySetup from './components/ApiKeySetup';
+import Guide from './components/Guide';
+
+type Screen = 'app' | 'apiKey' | 'guide';
 
 export default function App() {
-  const [showApiKey, setShowApiKey] = useState(false);
+  const [screen, setScreen] = useState<Screen>('app');
 
-  if (showApiKey) {
-    return <ApiKeySetup onClose={() => setShowApiKey(false)} />;
+  if (screen === 'apiKey') {
+    return <ApiKeySetup onClose={() => setScreen('app')} onOpenGuide={() => setScreen('guide')} />;
   }
-  return <BiasDetective onOpenApiKeySetup={() => setShowApiKey(true)} />;
+  if (screen === 'guide') {
+    return <Guide onClose={() => setScreen('app')} />;
+  }
+  return (
+    <BiasDetective
+      onOpenApiKeySetup={() => setScreen('apiKey')}
+      onOpenGuide={() => setScreen('guide')}
+    />
+  );
 }

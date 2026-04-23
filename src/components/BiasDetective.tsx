@@ -321,9 +321,10 @@ const validateCase = (c: any): string | null => {
 
 interface Props {
   onOpenApiKeySetup: () => void;
+  onOpenGuide: () => void;
 }
 
-export default function BiasDetective({ onOpenApiKeySetup }: Props) {
+export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props) {
   const [screen, setScreen] = useState<'menu' | 'loading' | 'play'>('menu');
   const [difficulty, setDifficulty] = useState<keyof typeof DIFFICULTY>('medium');
   const [srCase, setSrCase] = useState<any>(null);
@@ -614,7 +615,7 @@ export default function BiasDetective({ onOpenApiKeySetup }: Props) {
             <p className="text-slate-500 text-[11px] mt-1">Powered by Google Gemini API</p>
           </div>
 
-          <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="mb-4 flex items-center gap-2">
             <button
               onClick={onOpenApiKeySetup}
               className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-medium transition-all border flex items-center justify-center gap-2 ${
@@ -625,6 +626,13 @@ export default function BiasDetective({ onOpenApiKeySetup }: Props) {
             >
               <Key className="w-4 h-4" />
               {hasApiKey ? 'APIキー設定済 (クリックで変更)' : '⚠ APIキーを設定してください'}
+            </button>
+            <button
+              onClick={onOpenGuide}
+              className="py-2.5 px-4 rounded-xl text-sm font-medium transition-all border border-slate-600 bg-slate-800/60 text-slate-200 hover:bg-slate-700 flex items-center justify-center gap-2 whitespace-nowrap"
+              title="APIキーとは・取得方法・無料枠・トラブル対処"
+            >
+              📖 使い方ガイド
             </button>
           </div>
 
