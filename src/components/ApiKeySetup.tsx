@@ -118,8 +118,15 @@ export default function ApiKeySetup({ onClose, onOpenGuide }: Props) {
               <option key={m.id} value={m.id}>{m.label}</option>
             ))}
           </select>
-          <div className="text-[11px] text-slate-500 mb-4">
-            迷ったら <span className="text-indigo-300">gemini-2.0-flash</span> が無料枠・速度・品質のバランスで最適です。
+          <div className="text-[11px] text-slate-500 mb-4 leading-relaxed">
+            <div>
+              迷ったら <span className="text-indigo-300 font-mono">gemini-2.5-flash-lite</span> 推奨(無料枠で最も余裕)。
+            </div>
+            <div className="text-slate-600 mt-0.5">
+              無料枠は <span className="text-slate-400">1日20リクエスト</span>・
+              Lite=<span className="text-slate-400">毎分10回</span> / Flash=<span className="text-slate-400">毎分5回</span>。
+              枠超過時は「次のケース」を1〜2分待って再試行。
+            </div>
           </div>
 
           <div className="flex gap-2">

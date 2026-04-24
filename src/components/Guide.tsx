@@ -224,11 +224,15 @@ export default function Guide({ onClose }: Props) {
                 🟡「無料枠上限」「Rate limit」と出るが無料枠は残っているはず
               </summary>
               <div className="p-4 pt-0 text-xs space-y-2">
-                <p className="text-amber-200">このエラーは <span className="font-semibold">大抵1分間のRPM制限</span>(1分あたり15リクエスト)であり、日次の1,500回上限ではありません。</p>
+                <p className="text-amber-200">
+                  このエラーは <span className="font-semibold">1分あたりのRPM制限</span>
+                  (Flash=5回 / Flash-Lite=10回)または
+                  <span className="font-semibold">1日20リクエストのRPD制限</span>のどちらかです。
+                </p>
                 <ul className="list-disc list-inside space-y-1">
-                  <li>まず<span className="font-semibold">1〜2分待って</span>から再試行 → 大抵これで直る</li>
-                  <li>1〜2分後も連続で出る場合のみ日次上限の可能性 → 翌日UTC 0時(日本時間朝9時)を待つか、別プロジェクトのキーに切替</li>
-                  <li>モデルを <span className="font-mono">gemini-2.0-flash-lite</span> に変える(別の枠を持っている場合あり)</li>
+                  <li>まず<span className="font-semibold">1〜2分待って</span>から再試行 → RPM制限ならこれで直る</li>
+                  <li>連続で出る場合は1日20回の上限に到達した可能性 → 翌日UTC 0時(日本時間朝9時)を待つか、別プロジェクトのキーに切替</li>
+                  <li>モデルを <span className="font-mono">gemini-2.5-flash-lite</span> に変える(RPMがFlashの2倍で余裕あり)</li>
                 </ul>
               </div>
             </details>

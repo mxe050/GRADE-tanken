@@ -444,7 +444,7 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
             const preview = text.slice(0, 200).replace(/\s+/g, ' ');
             const tips = finishReason === 'MAX_TOKENS'
               ? '原因: トークン上限で途切れた。モデルを gemini-2.5-flash に変更すると改善することがあります。'
-              : '原因: モデルが予期しない形式で返した。モデルを gemini-2.5-flash または gemini-2.0-flash-lite に切り替えてみてください。';
+              : '原因: モデルが予期しない形式で返した。モデルを gemini-2.5-flash(高品質) と gemini-2.5-flash-lite(軽量) で切り替えてみてください。';
             setError(`ケース生成に失敗: JSONパース不能(3回試行)\n${tips}\n\n【finishReason】${finishReason || '不明'}\n【応答先頭】${preview}...`);
             setScreen('menu');
             return;

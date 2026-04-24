@@ -10,13 +10,14 @@ import {
 const STORAGE_KEY = 'grade_tanken_gemini_api_key';
 const MODEL_KEY = 'grade_tanken_gemini_model';
 
-export const DEFAULT_MODEL = 'gemini-2.0-flash';
+export const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 
+// Google AI Studio 無料枠 (2026-04時点) で実際にクォータがあり、
+// かつ本アプリの構造化JSON出力(responseSchema・最大8192トークン)に耐える2モデルのみ。
+// 参考: 無料枠レート制限 https://ai.google.dev/gemini-api/docs/rate-limits
 export const AVAILABLE_MODELS = [
-  { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash (推奨・無料枠あり・高速)' },
-  { id: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash-Lite (超高速・軽量)' },
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (高性能)' },
-  { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash (旧世代・互換用)' },
+  { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite (推奨・無料枠: 10 RPM / 250K TPM / 20 RPD)' },
+  { id: 'gemini-2.5-flash',      label: 'Gemini 2.5 Flash (高品質・無料枠: 5 RPM / 250K TPM / 20 RPD)' },
 ];
 
 export function getApiKey(): string {
@@ -31,7 +32,18 @@ export function setApiKey(key: string): void {
 }
 
 export function getModel(): string {
-  try { return localStorage.getItem(MODEL_KEY) || DEFAULT_MODEL; } catch { return DEFAULT_MODEL; }
+  try {
+    const stored = localStorage.getItem(MODEL_KEY);
+    if (!stored) return DEFAULT_MODEL;
+    // 旧モデル(2.0系・1.5系など)が保存されていたら新しいデフォルトに差し替え
+    if (!AVAILABLE_MODELS.some((m) => m.id === stored)) {
+      localStorage.setItem(MODEL_KEY, DEFAULT_MODEL);
+      return DEFAULT_MODEL;
+    }
+    return stored;
+  } catch {
+    return DEFAULT_MODEL;
+  }
 }
 
 export function setModel(model: string): void {
@@ -93,7 +105,7 @@ function classifyError(e: any): ApiError {
   }
   if (/429|RESOURCE_EXHAUSTED|Too Many Requests/i.test(msg) || status === 429) {
     return new ApiError(
-      'レート制限にかかりました(Gemini無料枠の1分15リクエストなど)。\n【対処】1〜2分待ってから「次のケース」を押してください。それでも直らない場合のみ日次上限の可能性です。',
+      'レート制限にかかりました。\n無料枠: Flash=5 RPM / Flash-Lite=10 RPM / 共通 20 RPD(1日20回)\n【対処】1〜2分待ってから再試行。連続で出る場合は1日20回の上限に達した可能性(UTC 0時=日本時間朝9時にリセット)。',
       'RATE_LIMIT'
     );
   }
