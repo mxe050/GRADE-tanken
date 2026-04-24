@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Award, BookOpen, RefreshCw, CheckCircle2, XCircle, Lightbulb, Sparkles,
   FileText, Activity, AlertTriangle, ArrowRight, Target, Eye, Users,
-  BarChart3, ClipboardCheck, Table, ChevronRight, Key, Shield,
+  BarChart3, ClipboardCheck, Table, ChevronRight, Key, Shield, Info, ExternalLink,
 } from 'lucide-react';
 import { generateText, ApiError, getApiKey, extractJsonRobust, SR_CASE_SCHEMA } from '../lib/gemini';
 
@@ -662,6 +662,48 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="bg-amber-900/20 border border-amber-700/50 rounded-xl p-4 mb-4 text-xs text-amber-100/90">
+            <div className="font-semibold text-amber-200 mb-2 flex items-center gap-1">
+              <Info className="w-3.5 h-3.5" />ご利用にあたって
+            </div>
+            <ul className="space-y-1.5 list-disc list-inside leading-relaxed">
+              <li>基本的訓練のためのアプリのため、厳密な評価でない場合があります。</li>
+              <li>
+                シナリオ・解説は、AIが作成しており、AIの能力に従います。
+                より高性能を求める方は、これを利用して他のAPIで動くように修正してください。
+              </li>
+              <li>
+                さらに詳しく学びたい方は:
+                <ul className="mt-1 ml-4 space-y-1 list-none">
+                  <li>
+                    ・
+                    <a
+                      href="https://mxe050.github.io/CPGSRuser/#page-0"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-300 hover:text-indigo-200 underline inline-flex items-center gap-1"
+                    >
+                      EBMの実践のためのGRADE
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </li>
+                  <li>
+                    ・
+                    <a
+                      href="https://core-grade-guide-1-mxe050s-projects.vercel.app"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-300 hover:text-indigo-200 underline inline-flex items-center gap-1"
+                    >
+                      CPG/SR作成者のためのGRADE
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </li>
+                </ul>
+              </li>
+            </ul>
           </div>
 
           <div className="bg-slate-800/30 border border-slate-700 rounded-xl p-4 mb-4 text-xs text-slate-300">
