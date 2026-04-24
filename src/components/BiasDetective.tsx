@@ -301,6 +301,7 @@ interface Props {
 export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props) {
   const [screen, setScreen] = useState<'menu' | 'loading' | 'play'>('menu');
   const [difficulty, setDifficulty] = useState<keyof typeof DIFFICULTY>('medium');
+  const [topic, setTopic] = useState<string>('');
   const [srCase, setSrCase] = useState<any>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [finalCertainty, setFinalCertainty] = useState<string | null>(null);
@@ -319,11 +320,13 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
 
   const hasApiKey = !!getApiKey();
 
-  const generateCase = async (diff: keyof typeof DIFFICULTY) => {
+  const generateCase = async (diff: keyof typeof DIFFICULTY, topicOverride?: string) => {
     if (!getApiKey()) {
       setError('先にGoogle Gemini APIキーを設定してください。');
       return;
     }
+
+    const topicTrimmed = (topicOverride ?? topic).trim().slice(0, 80);
 
     setScreen('loading');
     setError('');
@@ -340,6 +343,9 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
       'あなたは臨床疫学の教育者です。Core GRADE (Guyattら 2025 BMJ series) の学習用として、RCTのシステマティックレビュー(SR)の架空ケースを生成してください。',
       '',
       '難易度: ' + DIFFICULTY[diff].label + ' — ' + DIFFICULTY[diff].desc,
+      topicTrimmed
+        ? `【題材指定】今回のケースは必ず「${topicTrimmed}」に関連する診療領域・疾患・手技・集団で作成してください。field および clinical_scenario はこの題材に合致させ、target_pico も違和感のない範囲で題材に即すこと。ただし学習価値を確保するため、RCT/SRとして臨床的に妥当な介入・比較・アウトカム・効果推定値・不均一性・RoBプロファイルを構築してください(非現実的な題材でも無理に押し通さず、隣接領域で補正してよい)。`
+        : '',
       attempt > 1 ? `\n【再試行${attempt}回目】前回のJSONが不完全でした。簡潔かつ完全なJSONを返してください。` : '',
       '',
       '【厳守】有効なJSONのみを返すこと。前置き・解説・コードブロック記法は一切含めない。文字列内のダブルクォートは必ずエスケープ(\\")する。',
@@ -661,6 +667,25 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
                   <div className="text-slate-400 text-sm mt-1">{val.desc}</div>
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 backdrop-blur border border-slate-700 rounded-2xl p-6 mb-4">
+            <label htmlFor="topic-input" className="block text-sm font-semibold text-white mb-2 flex items-center gap-2">
+              <Target className="w-4 h-4 text-indigo-400" />題材を指定 <span className="text-xs font-normal text-slate-400">(任意)</span>
+            </label>
+            <input
+              id="topic-input"
+              type="text"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="例: 歯科 / 胃がん / ARDS / 親知らず抜歯"
+              maxLength={80}
+              className="w-full bg-slate-900 border border-slate-600 focus:border-indigo-400 rounded-lg px-3 py-2.5 text-white text-sm outline-none placeholder:text-slate-500"
+            />
+            <div className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+              空欄ならAIが自由に題材を選びます。診療科・疾患・手技・集団など自由に指定可。
+              題材が狭すぎる場合、隣接領域で補正される場合があります。
             </div>
           </div>
 
