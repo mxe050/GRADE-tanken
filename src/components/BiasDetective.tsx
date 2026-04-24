@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Award, BookOpen, RefreshCw, CheckCircle2, XCircle, Lightbulb, Sparkles,
   FileText, Activity, AlertTriangle, ArrowRight, Target, Eye, Users,
-  BarChart3, ClipboardCheck, Table, ChevronRight, Key,
+  BarChart3, ClipboardCheck, Table, ChevronRight, Key, Shield,
 } from 'lucide-react';
 import { generateText, ApiError, getApiKey, extractJsonRobust, SR_CASE_SCHEMA } from '../lib/gemini';
 
@@ -272,7 +272,7 @@ const SoFTable = ({ outcomes }: any) => {
 const validateCase = (c: any): string | null => {
   if (!c || typeof c !== 'object') return 'JSONがオブジェクトでない';
   const required = ['title', 'field', 'target_pico', 'ci_data', 'pooled_result',
-    'trial_characteristics', 'heterogeneity', 'applicability_notes', 'search_and_publication',
+    'trial_characteristics', 'risk_of_bias_info', 'heterogeneity', 'applicability_notes', 'search_and_publication',
     'correct_judgments', 'final_certainty', 'sof_outcomes', 'etd_framework'];
   for (const key of required) {
     if (!(key in c)) return `必須フィールド欠落: ${key}`;
@@ -376,7 +376,8 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
       '    "absolute_effect": "string",',
       '    "interpretation": "string"',
       '  },',
-      '  "trial_characteristics": "string (3-4文)",',
+      '  "trial_characteristics": "string (3-4文、組入試験の設計・母集団・介入内容・追跡期間の概要)",',
+      '  "risk_of_bias_info": "string (4-6文、RoB2の5ドメインを必ず網羅: (1)ランダム化の生成方法・割付の隠蔽化、(2)介入への盲検化(参加者・医療者)、(3)脱落率/ITT解析の有無、(4)アウトカム測定者の盲検化・測定方法の客観性、(5)事前登録(prospective registration)と結果報告の完全性)。難易度に応じバイアス源を混ぜて記述する。",',
       '  "heterogeneity": "string (2-3文、I²値含む)",',
       '  "applicability_notes": "string (2-3文)",',
       '  "search_and_publication": "string (2-3文)",',
@@ -417,6 +418,7 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
       '4. 難易度別rate down数: 初級1-2 / 中級2-3 / 上級3-4',
       '5. 最終certainty → 推奨の強さ: High/Moderate → Strong可、Low/Very Low → 原則Conditional',
       '6. EtD推奨方向は絶対効果とMIDから妥当に導く',
+      '7. RoBの判断(no_rate_down/rate_down_1/rate_down_2)は、必ず risk_of_bias_info に記述した5ドメインの具体情報から学習者が独力で導けるようにする。rationaleは risk_of_bias_info と矛盾してはならない。',
     ].filter(Boolean).join('\n');
 
     const maxAttempts = 3;
@@ -504,6 +506,7 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
       '',
       'ドメイン: ' + target.desc,
       '組入試験: ' + srCase.trial_characteristics,
+      'RoB情報: ' + (srCase.risk_of_bias_info || '(未提示)'),
       '不均一性: ' + srCase.heterogeneity,
       '直接性: ' + srCase.applicability_notes,
       '検索/出版: ' + srCase.search_and_publication,
@@ -863,9 +866,17 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
                   <div className="space-y-4 text-sm text-slate-700 leading-relaxed">
                     <section>
                       <h3 className="font-semibold text-slate-900 text-sm mb-2 border-b border-slate-200 pb-1 flex items-center gap-1">
-                        <AlertTriangle className="w-3.5 h-3.5 text-red-500" />組入試験の特徴
+                        <Shield className="w-3.5 h-3.5 text-slate-600" />組入試験の特徴
                       </h3>
                       <p>{srCase.trial_characteristics}</p>
+                    </section>
+                    <section className="bg-red-50/60 border border-red-200 rounded-lg p-3 -mx-1">
+                      <h3 className="font-semibold text-red-900 text-sm mb-2 border-b border-red-200 pb-1 flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5 text-red-500" />バイアスリスク情報 (RoB2の5ドメイン)
+                      </h3>
+                      <p className="text-slate-800 whitespace-pre-line">
+                        {srCase.risk_of_bias_info || '(生成されませんでした。新しいケースを生成してください)'}
+                      </p>
                     </section>
                     <section>
                       <h3 className="font-semibold text-slate-900 text-sm mb-2 border-b border-slate-200 pb-1 flex items-center gap-1">

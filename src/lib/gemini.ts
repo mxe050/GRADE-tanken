@@ -358,6 +358,7 @@ export const SR_CASE_SCHEMA: Schema = {
       required: ['effect_measure', 'point_estimate', 'ci_95', 'absolute_effect', 'interpretation'],
     },
     trial_characteristics: { type: SchemaType.STRING },
+    risk_of_bias_info: { type: SchemaType.STRING },
     heterogeneity: { type: SchemaType.STRING },
     applicability_notes: { type: SchemaType.STRING },
     search_and_publication: { type: SchemaType.STRING },
@@ -446,6 +447,7 @@ export const SR_CASE_SCHEMA: Schema = {
   required: [
     'title', 'field', 'clinical_scenario', 'target_pico', 'outcome_type', 'mid_description',
     'ci_data', 'num_trials', 'total_n', 'pooled_result', 'trial_characteristics',
+    'risk_of_bias_info',
     'heterogeneity', 'applicability_notes', 'search_and_publication', 'correct_judgments',
     'final_certainty', 'final_rationale', 'teaching_point', 'sof_outcomes', 'etd_framework',
   ],
