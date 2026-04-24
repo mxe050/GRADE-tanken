@@ -3,6 +3,7 @@ import {
   Award, BookOpen, RefreshCw, CheckCircle2, XCircle, Lightbulb, Sparkles,
   FileText, Activity, AlertTriangle, ArrowRight, Target, Eye, Users,
   BarChart3, ClipboardCheck, Table, ChevronRight, Key, Shield, Info, ExternalLink,
+  Shuffle, List, Pencil,
 } from 'lucide-react';
 import { generateText, ApiError, getApiKey, extractJsonRobust, SR_CASE_SCHEMA } from '../lib/gemini';
 
@@ -33,6 +34,34 @@ const DIFFICULTY: Record<string, { label: string; desc: string }> = {
   medium: { label: '中級 (研修医)', desc: '複数ドメインで判断が混在' },
   hard: { label: '上級 (専門医)', desc: 'close callやsubgroup効果を含む' },
 };
+
+const PRESET_TOPICS: string[] = [
+  '循環器内科(高血圧・心不全・虚血性心疾患・不整脈)',
+  '呼吸器内科(喘息・COPD・肺炎・ARDS)',
+  '消化器内科(炎症性腸疾患・肝疾患・H.pylori)',
+  '腎臓内科(CKD・AKI・透析)',
+  '内分泌代謝(糖尿病・甲状腺・脂質異常症)',
+  '神経内科(脳卒中・認知症・パーキンソン病・てんかん)',
+  '血液内科(白血病・リンパ腫・貧血)',
+  '腫瘍内科(乳がん・肺がん・大腸がん)',
+  '感染症(HIV・結核・COVID-19・敗血症)',
+  '救急・集中治療',
+  '外科・周術期管理',
+  '整形外科(変形性関節症・骨折・脊椎疾患)',
+  '産婦人科(妊娠合併症・周産期)',
+  '小児科(ワクチン・小児感染症・新生児)',
+  '精神科(うつ病・統合失調症・不安障害)',
+  '皮膚科(アトピー性皮膚炎・乾癬)',
+  '眼科(緑内障・加齢黄斑・白内障)',
+  '耳鼻咽喉科(中耳炎・副鼻腔炎・めまい)',
+  '歯科・口腔外科(歯周病・う蝕・親知らず抜歯)',
+  '口腔ケア・摂食嚥下',
+  'リハビリテーション',
+  '緩和ケア・疼痛管理',
+  '麻酔科(術後疼痛・PONV)',
+  '泌尿器科(前立腺疾患・尿路結石・腎がん)',
+  '予防医学・スクリーニング',
+];
 
 const FlowBox = ({ children, color = 'slate', className = '' }: any) => {
   const colors: Record<string, string> = {
@@ -302,6 +331,9 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
   const [screen, setScreen] = useState<'menu' | 'loading' | 'play'>('menu');
   const [difficulty, setDifficulty] = useState<keyof typeof DIFFICULTY>('medium');
   const [topic, setTopic] = useState<string>('');
+  const [topicMode, setTopicMode] = useState<'free' | 'preset'>('free');
+  const [presetPickMode, setPresetPickMode] = useState<'random' | 'list'>('random');
+  const [selectedPreset, setSelectedPreset] = useState<string>('');
   const [srCase, setSrCase] = useState<any>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [finalCertainty, setFinalCertainty] = useState<string | null>(null);
@@ -326,7 +358,17 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
       return;
     }
 
-    const topicTrimmed = (topicOverride ?? topic).trim().slice(0, 80);
+    const resolveTopic = (): string => {
+      if (topicOverride !== undefined) return topicOverride;
+      if (topicMode === 'preset') {
+        if (presetPickMode === 'random') {
+          return PRESET_TOPICS[Math.floor(Math.random() * PRESET_TOPICS.length)];
+        }
+        return selectedPreset;
+      }
+      return topic;
+    };
+    const topicTrimmed = resolveTopic().trim().slice(0, 80);
 
     setScreen('loading');
     setError('');
@@ -671,22 +713,100 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
           </div>
 
           <div className="bg-slate-800/50 backdrop-blur border border-slate-700 rounded-2xl p-6 mb-4">
-            <label htmlFor="topic-input" className="block text-sm font-semibold text-white mb-2 flex items-center gap-2">
+            <div className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
               <Target className="w-4 h-4 text-indigo-400" />題材を指定 <span className="text-xs font-normal text-slate-400">(任意)</span>
-            </label>
-            <input
-              id="topic-input"
-              type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              placeholder="例: 歯科 / 胃がん / ARDS / 親知らず抜歯"
-              maxLength={80}
-              className="w-full bg-slate-900 border border-slate-600 focus:border-indigo-400 rounded-lg px-3 py-2.5 text-white text-sm outline-none placeholder:text-slate-500"
-            />
-            <div className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
-              空欄ならAIが自由に題材を選びます。診療科・疾患・手技・集団など自由に指定可。
-              題材が狭すぎる場合、隣接領域で補正される場合があります。
             </div>
+
+            <div className="flex gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => setTopicMode('free')}
+                className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium border transition-all flex items-center justify-center gap-1.5 ${
+                  topicMode === 'free'
+                    ? 'border-indigo-400 bg-indigo-400/15 text-indigo-100'
+                    : 'border-slate-700 bg-slate-900/40 text-slate-400 hover:border-slate-600'
+                }`}
+              >
+                <Pencil className="w-3.5 h-3.5" />フリー入力
+              </button>
+              <button
+                type="button"
+                onClick={() => setTopicMode('preset')}
+                className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium border transition-all flex items-center justify-center gap-1.5 ${
+                  topicMode === 'preset'
+                    ? 'border-indigo-400 bg-indigo-400/15 text-indigo-100'
+                    : 'border-slate-700 bg-slate-900/40 text-slate-400 hover:border-slate-600'
+                }`}
+              >
+                <List className="w-3.5 h-3.5" />プリセットから選ぶ
+              </button>
+            </div>
+
+            {topicMode === 'free' ? (
+              <>
+                <input
+                  id="topic-input"
+                  type="text"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder="例: 歯科 / 胃がん / ARDS / 親知らず抜歯"
+                  maxLength={80}
+                  className="w-full bg-slate-900 border border-slate-600 focus:border-indigo-400 rounded-lg px-3 py-2.5 text-white text-sm outline-none placeholder:text-slate-500"
+                />
+                <div className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                  空欄ならAIが自由に題材を選びます。診療科・疾患・手技・集団など自由に指定可。
+                  題材が狭すぎる場合、隣接領域で補正される場合があります。
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setPresetPickMode('random')}
+                    className={`flex-1 py-1.5 px-2 rounded-md text-[11px] font-medium border transition-all flex items-center justify-center gap-1 ${
+                      presetPickMode === 'random'
+                        ? 'border-purple-400 bg-purple-400/15 text-purple-100'
+                        : 'border-slate-700 bg-slate-900/40 text-slate-400 hover:border-slate-600'
+                    }`}
+                  >
+                    <Shuffle className="w-3 h-3" />ランダムに選ぶ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPresetPickMode('list')}
+                    className={`flex-1 py-1.5 px-2 rounded-md text-[11px] font-medium border transition-all flex items-center justify-center gap-1 ${
+                      presetPickMode === 'list'
+                        ? 'border-purple-400 bg-purple-400/15 text-purple-100'
+                        : 'border-slate-700 bg-slate-900/40 text-slate-400 hover:border-slate-600'
+                    }`}
+                  >
+                    <List className="w-3 h-3" />リストから指定
+                  </button>
+                </div>
+
+                {presetPickMode === 'list' ? (
+                  <select
+                    value={selectedPreset}
+                    onChange={(e) => setSelectedPreset(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-600 focus:border-indigo-400 rounded-lg px-3 py-2.5 text-white text-sm outline-none"
+                  >
+                    <option value="">-- 領域を選択(未選択時はAIが自由選択) --</option>
+                    {PRESET_TOPICS.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="w-full bg-slate-900/60 border border-dashed border-slate-600 rounded-lg px-3 py-2.5 text-slate-300 text-xs leading-relaxed flex items-start gap-2">
+                    <Shuffle className="w-3.5 h-3.5 mt-0.5 text-purple-400 shrink-0" />
+                    <span>生成ボタンを押すたびに、{PRESET_TOPICS.length}領域からランダムに1つ選ばれます。バリエーション豊富な学習におすすめ。</span>
+                  </div>
+                )}
+                <div className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                  プリセットは診療領域の粒度で定義。題材が狭すぎる場合、AIが隣接領域で補正します。
+                </div>
+              </>
+            )}
           </div>
 
           <div className="bg-amber-900/20 border border-amber-700/50 rounded-xl p-4 mb-4 text-xs text-amber-100/90">
