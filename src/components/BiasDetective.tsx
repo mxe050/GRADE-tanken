@@ -3,8 +3,9 @@ import {
   Award, BookOpen, RefreshCw, CheckCircle2, XCircle, Lightbulb, Sparkles,
   FileText, Activity, AlertTriangle, ArrowRight, Target, Eye, Users,
   BarChart3, ClipboardCheck, Table, ChevronRight, Key, Shield, Info, ExternalLink,
-  Shuffle, List, Pencil,
+  Shuffle, List, Pencil, Microscope,
 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { generateText, ApiError, getApiKey, extractJsonRobust, SR_CASE_SCHEMA } from '../lib/gemini';
 
 const DOMAINS = [
@@ -298,6 +299,157 @@ const SoFTable = ({ outcomes }: any) => {
   );
 };
 
+const formatSrCaseAsText = (c: any): string => {
+  const lines: string[] = [];
+  lines.push(`【タイトル】${c.title || ''}`);
+  lines.push(`【診療領域】${c.field || ''}`);
+  lines.push(`【臨床シナリオ】${c.clinical_scenario || ''}`);
+  lines.push('');
+  lines.push('【Target PICO】');
+  if (c.target_pico) {
+    lines.push(`P: ${c.target_pico.population || ''}`);
+    lines.push(`I: ${c.target_pico.intervention || ''}`);
+    lines.push(`C: ${c.target_pico.comparator || ''}`);
+    lines.push(`O: ${c.target_pico.outcome || ''}`);
+  }
+  lines.push('');
+  lines.push('【主要アウトカムの結果(プール解析)】');
+  if (c.pooled_result) {
+    lines.push(`指標: ${c.pooled_result.effect_measure || ''}`);
+    lines.push(`点推定値: ${c.pooled_result.point_estimate || ''}`);
+    lines.push(`95% CI: ${c.pooled_result.ci_95 || ''}`);
+    lines.push(`絶対効果: ${c.pooled_result.absolute_effect || ''}`);
+    lines.push(`解釈: ${c.pooled_result.interpretation || ''}`);
+  }
+  lines.push(`試験数: ${c.num_trials ?? '?'}本 / 総N: ${c.total_n ?? '?'}`);
+  lines.push(`MID(臨床的に意味のある最小差): ${c.mid_description || ''}`);
+  lines.push('');
+  lines.push('【組入試験の特徴】');
+  lines.push(c.trial_characteristics || '');
+  lines.push('');
+  lines.push('【バイアスリスク情報 (RoB2の5ドメイン)】');
+  lines.push(c.risk_of_bias_info || '');
+  lines.push('');
+  lines.push('【不均一性 (Inconsistency)】');
+  lines.push(c.heterogeneity || '');
+  lines.push('');
+  lines.push('【直接性・適用可能性 (Indirectness)】');
+  lines.push(c.applicability_notes || '');
+  lines.push('');
+  lines.push('【検索・出版バイアス】');
+  lines.push(c.search_and_publication || '');
+  lines.push('');
+  lines.push('【最終Certainty (エビデンスの確かさ)】');
+  lines.push(`評価: ${c.final_certainty || ''}`);
+  lines.push(`gestalt判断の理由: ${c.final_rationale || ''}`);
+  lines.push('');
+  if (Array.isArray(c.sof_outcomes) && c.sof_outcomes.length > 0) {
+    lines.push('【Summary of Findings (SoF) 表】');
+    c.sof_outcomes.forEach((o: any, i: number) => {
+      lines.push(
+        `${i + 1}. ${o.name || ''} [重要度=${o.importance || ''}] ` +
+        `試験${o.trials ?? '?'}本 / N=${o.n ?? '?'} / ` +
+        `相対効果=${o.relative_effect || ''} / 絶対効果=${o.absolute_effect || ''} / ` +
+        `certainty=${o.certainty || ''}`
+      );
+    });
+    lines.push('');
+  }
+  if (c.etd_framework) {
+    lines.push('【EtD (Evidence to Decision) 枠組み】');
+    lines.push(`ベネフィット・ハームのバランス: ${c.etd_framework.benefits_harms_summary || ''}`);
+    lines.push(`患者の価値観・選好: ${c.etd_framework.values_preferences || ''}`);
+    lines.push(`資源・実行可能性: ${c.etd_framework.resources_feasibility || ''}`);
+    lines.push(`想定される推奨: ${c.etd_framework.correct_recommendation || ''}`);
+    lines.push(`推奨の根拠: ${c.etd_framework.recommendation_rationale || ''}`);
+  }
+  return lines.join('\n');
+};
+
+const RealityCheckRenderer = ({ text }: { text: string }) => {
+  const renderInline = (s: string): ReactNode => {
+    const out: ReactNode[] = [];
+    const re = /\*\*([^*]+?)\*\*|`([^`]+?)`/g;
+    let lastIdx = 0;
+    let m: RegExpExecArray | null;
+    let key = 0;
+    while ((m = re.exec(s)) !== null) {
+      if (m.index > lastIdx) out.push(<span key={key++}>{s.slice(lastIdx, m.index)}</span>);
+      if (m[1]) out.push(<strong key={key++} className="font-bold text-slate-900">{m[1]}</strong>);
+      else if (m[2]) out.push(<code key={key++} className="bg-slate-100 px-1 rounded text-xs font-mono">{m[2]}</code>);
+      lastIdx = m.index + m[0].length;
+    }
+    if (lastIdx < s.length) out.push(<span key={key++}>{s.slice(lastIdx)}</span>);
+    return out.length > 0 ? out : s;
+  };
+
+  const lines = text.split('\n');
+  const blocks: ReactNode[] = [];
+  let listItems: ReactNode[] = [];
+  let blockKey = 0;
+
+  const flushList = () => {
+    if (listItems.length > 0) {
+      blocks.push(
+        <ul key={`ul-${blockKey++}`} className="list-disc list-outside pl-5 space-y-1.5 my-3 text-slate-700 leading-relaxed">
+          {listItems}
+        </ul>
+      );
+      listItems = [];
+    }
+  };
+
+  lines.forEach((raw, idx) => {
+    const line = raw.replace(/\s+$/, '');
+    const bullet = line.match(/^\s*[*\-•]\s+(.+)$/);
+    if (bullet) {
+      listItems.push(<li key={`li-${idx}`}>{renderInline(bullet[1])}</li>);
+      return;
+    }
+    flushList();
+
+    if (line.trim() === '') {
+      blocks.push(<div key={`sp-${blockKey++}`} className="h-2" />);
+      return;
+    }
+    const h3 = line.match(/^###\s+(.+)$/);
+    if (h3) {
+      blocks.push(
+        <h3 key={`h3-${blockKey++}`} className="text-base font-bold text-slate-900 mt-5 mb-2 pb-1 border-b border-slate-200">
+          {renderInline(h3[1])}
+        </h3>
+      );
+      return;
+    }
+    const h2 = line.match(/^##\s+(.+)$/);
+    if (h2) {
+      blocks.push(
+        <h2 key={`h2-${blockKey++}`} className="text-lg font-bold text-slate-900 mt-5 mb-2 pb-1 border-b border-slate-300">
+          {renderInline(h2[1])}
+        </h2>
+      );
+      return;
+    }
+    const h1 = line.match(/^#\s+(.+)$/);
+    if (h1) {
+      blocks.push(
+        <h1 key={`h1-${blockKey++}`} className="text-xl font-bold text-slate-900 mt-5 mb-2 pb-1 border-b border-slate-300">
+          {renderInline(h1[1])}
+        </h1>
+      );
+      return;
+    }
+    blocks.push(
+      <p key={`p-${blockKey++}`} className="text-slate-700 leading-relaxed my-2">
+        {renderInline(line)}
+      </p>
+    );
+  });
+
+  flushList();
+  return <div className="text-sm">{blocks}</div>;
+};
+
 const validateCase = (c: any): string | null => {
   if (!c || typeof c !== 'object') return 'JSONがオブジェクトでない';
   const required = ['title', 'field', 'target_pico', 'ci_data', 'pooled_result',
@@ -328,7 +480,7 @@ interface Props {
 }
 
 export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props) {
-  const [screen, setScreen] = useState<'menu' | 'loading' | 'play'>('menu');
+  const [screen, setScreen] = useState<'menu' | 'loading' | 'play' | 'reality_check'>('menu');
   const [difficulty, setDifficulty] = useState<keyof typeof DIFFICULTY>('medium');
   const [topic, setTopic] = useState<string>('');
   const [topicMode, setTopicMode] = useState<'free' | 'preset'>('free');
@@ -349,6 +501,9 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
   const [activeDomain, setActiveDomain] = useState<string>('rob');
   const [phase, setPhase] = useState<'grade' | 'etd'>('grade');
   const [loadingMessage, setLoadingMessage] = useState('SRケースを生成中...');
+  const [realityCheckLoading, setRealityCheckLoading] = useState(false);
+  const [realityCheckResult, setRealityCheckResult] = useState<string | null>(null);
+  const [realityCheckError, setRealityCheckError] = useState('');
 
   const hasApiKey = !!getApiKey();
 
@@ -380,6 +535,9 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
     setHint('');
     setActiveTab('paper');
     setPhase('grade');
+    setRealityCheckResult(null);
+    setRealityCheckError('');
+    setRealityCheckLoading(false);
 
     const makePrompt = (attempt: number) => [
       'あなたは臨床疫学の教育者です。Core GRADE (Guyattら 2025 BMJ series) の学習用として、RCTのシステマティックレビュー(SR)の架空ケースを生成してください。',
@@ -637,6 +795,59 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
     setRecommendation(null);
     setResult(null);
     setPhase('grade');
+    setRealityCheckResult(null);
+    setRealityCheckError('');
+    setRealityCheckLoading(false);
+  };
+
+  const runRealityCheck = async (force = false) => {
+    if (!srCase) return;
+    setScreen('reality_check');
+    if (realityCheckResult && !force) return;
+
+    setRealityCheckLoading(true);
+    setRealityCheckError('');
+    setRealityCheckResult(null);
+
+    const srText = formatSrCaseAsText(srCase);
+    const prompt = [
+      'あなたは最新の医学的エビデンスに精通した専門医および医学研究者です。',
+      '',
+      '作成した【仮想SRの文章】を読み、現在の「実際の医学的エビデンス」や「実際の臨床現場で行われている標準治療・ガイドライン」と比較評価してください。',
+      '',
+      '仮想の文章と現実との間にどのような差があるのか、以下の要件に従って分かりやすい文章でまとめてください。',
+      '',
+      '### 評価の要件',
+      '1. **現実とのギャップの明示:** 仮想SRの結論やデータが、現実の医療・最新の研究結果とどう違うのかを明確にしてください。',
+      '2. **「ここが現実とは違います」という指摘:** 仮想の文章の中で、現実に即していない部分(矛盾点、古い情報、あるいは全くのフィクションである部分)を具体的にピックアップして解説してください。',
+      '3. **現在の標準治療・エビデンスの提示:** 比較対象として、「現実の現在では、どのような治療や解釈が一般的(または最新のエビデンス)とされているか」を簡潔に説明してください。',
+      '4. **分かりやすさ:** 専門用語を並べ立てるのではなく、医療従事者ではない人でも理解できるような、平易で論理的な文章でまとめてください。',
+      '',
+      '### 出力フォーマット',
+      'Markdown形式で以下の4セクションに分けて出力してください。各セクションは見出しを `**【...】**` の形で太字で示し、本文を続けてください。箇条書きは行頭に `* ` を付けてください。',
+      '',
+      '* **【仮想SRの主張の要約】**',
+      '* **【現実のエビデンス・臨床現場との違い(箇条書きで具体的に)】**',
+      '* **【現在の本当の標準治療・最新エビデンスの解説】**',
+      '* **【総合評価(総括)】**',
+      '',
+      '### 仮想SRの文章',
+      srText,
+    ].join('\n');
+
+    try {
+      const { text } = await generateText(prompt, {
+        maxOutputTokens: 8192,
+        temperature: 0.4,
+        responseMimeType: 'text/plain',
+      });
+      setRealityCheckResult(text.trim());
+    } catch (e: any) {
+      setRealityCheckError(
+        e instanceof ApiError ? e.message : String(e?.message || e)
+      );
+    }
+    setRealityCheckLoading(false);
   };
 
   const allDomainsAnswered = DOMAINS.every((d) => answers[d.id]);
@@ -814,7 +1025,9 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
               <Info className="w-3.5 h-3.5" />ご利用にあたって
             </div>
             <ul className="space-y-1.5 list-disc list-inside leading-relaxed">
-              <li>基本的訓練のためのアプリのため、厳密な評価でない場合があります。</li>
+              <li>仮想例で100本ノック練習のアプリで、基礎を固めるものです。</li>
+              <li>評価方法は、簡便化されているので、回答も迅速な訓練でよいです。</li>
+              <li>仮想SRは、あくまでも仮想のため、現実と異なります(「仮想SRの仮想な点」)。</li>
               <li>
                 シナリオ・解説は、AIが作成しており、AIの能力に従います。
                 より高性能を求める方は、これを利用して他のAPIで動くように修正してください。
@@ -1349,6 +1562,23 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
             </div>
           </div>
 
+          <div className="mt-6 bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-2xl p-4 flex flex-col md:flex-row items-center gap-3 justify-between">
+            <div className="text-center md:text-left">
+              <div className="font-semibold text-purple-900 text-sm flex items-center gap-1.5 justify-center md:justify-start">
+                <Microscope className="w-4 h-4" />このSRはAIが生成した「仮想」のものです
+              </div>
+              <div className="text-xs text-slate-600 mt-1 leading-relaxed">
+                現実の医学的エビデンス・現行ガイドラインと比較し、どこが「仮想(=現実と異なる)」なのかをAIに解説させます。
+              </div>
+            </div>
+            <button
+              onClick={() => runRealityCheck()}
+              className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2.5 px-5 rounded-xl shadow-md transition-all flex items-center gap-2 whitespace-nowrap text-sm"
+            >
+              <Microscope className="w-4 h-4" />仮想SRの「仮想な点」
+            </button>
+          </div>
+
           {result && (
             <div className="mt-6 bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
               <h3 className="text-xl font-bold text-slate-900 mb-4">詳細解説</h3>
@@ -1433,6 +1663,88 @@ export default function BiasDetective({ onOpenApiKeySetup, onOpenGuide }: Props)
               </div>
             </div>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  if (screen === 'reality_check' && srCase) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-4 md:p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
+            <button
+              onClick={() => setScreen('play')}
+              className="text-slate-600 hover:text-slate-900 text-sm flex items-center gap-1"
+            >
+              ← 学習画面に戻る
+            </button>
+            {!realityCheckLoading && (realityCheckResult || realityCheckError) && (
+              <button
+                onClick={() => runRealityCheck(true)}
+                className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 flex items-center gap-1"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />再分析
+              </button>
+            )}
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+            <div className="mb-4 pb-4 border-b border-slate-200">
+              <div className="inline-block bg-purple-100 text-purple-700 text-xs font-medium px-2 py-1 rounded mb-2">
+                仮想 vs 現実 — エビデンス比較分析
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 leading-snug flex items-start gap-2">
+                <Microscope className="w-6 h-6 text-purple-600 flex-shrink-0 mt-0.5" />
+                <span>
+                  「{srCase.title}」
+                  <br />
+                  <span className="text-base font-normal text-slate-600">— このSRの「仮想な点」を現実と比較</span>
+                </span>
+              </h2>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 text-xs text-amber-900 mb-4 leading-relaxed">
+              <div className="font-semibold mb-1 flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5" />ご注意
+              </div>
+              この比較分析もAIによる生成であり、絶対的な正確性は保証されません。AIの学習データのカットオフ時点までの一般的な情報に基づくため、最新の知見が反映されていない場合があります。実臨床の判断には必ず最新の正規ガイドラインや原著論文を参照してください。
+            </div>
+
+            {realityCheckLoading && (
+              <div className="text-center py-12">
+                <RefreshCw className="w-10 h-10 text-purple-400 animate-spin mx-auto mb-3" />
+                <p className="text-slate-700">AIが現実の医療エビデンスと比較中...</p>
+                <p className="text-slate-500 text-xs mt-1">数十秒〜1分程度かかります</p>
+              </div>
+            )}
+
+            {realityCheckError && !realityCheckLoading && (
+              <div className="bg-red-50 border border-red-300 text-red-800 rounded-lg p-3 mb-3 text-sm whitespace-pre-wrap">
+                <div className="font-semibold mb-1">エラー</div>
+                {realityCheckError}
+                <button
+                  onClick={() => runRealityCheck(true)}
+                  className="block mt-3 text-sm py-1.5 px-3 rounded bg-red-600 text-white hover:bg-red-700"
+                >
+                  再試行
+                </button>
+              </div>
+            )}
+
+            {realityCheckResult && !realityCheckLoading && (
+              <RealityCheckRenderer text={realityCheckResult} />
+            )}
+          </div>
+
+          <div className="mt-4 flex justify-center">
+            <button
+              onClick={() => setScreen('play')}
+              className="text-sm py-2 px-5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100"
+            >
+              ← 学習画面に戻る
+            </button>
+          </div>
         </div>
       </div>
     );
